@@ -97,6 +97,11 @@ func handleRegister(s *state, cmd command) error {
 	return nil
 }
 
+func handleReset(s *state, _ command) error {
+	ctx := context.Background()
+	return s.db.Reset(ctx)
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -121,6 +126,7 @@ func main() {
 
 	cmds.register("login", handleLogin)
 	cmds.register("register", handleRegister)
+	cmds.register("reset", handleReset)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
