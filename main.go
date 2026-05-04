@@ -1,15 +1,23 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"gator/internal/config"
+	"gator/internal/database"
 	"log"
 	"os"
+	"time"
+
+	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 )
 
 type state struct {
 	config *config.Config
+	db     *database.Queries
 }
 
 type command struct {
@@ -40,10 +48,52 @@ func handleLogin(s *state, cmd command) error {
 		return errors.New("expected 1 argument: username")
 	}
 	username := cmd.args[0]
+
+	ctx := context.Background()
+
+	user, err := s.db.GetUser(ctx, username)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("user: %+v\n", user)
+
 	if err := s.config.SetUser(username); err != nil {
 		return err
 	}
+
 	fmt.Println("Set user to:", username)
+
+	return nil
+}
+
+func handleRegister(s *state, cmd command) error {
+	if len(cmd.args) != 1 {
+		return errors.New("expected 1 argument: username")
+	}
+	username := cmd.args[0]
+
+	ctx := context.Background()
+
+	id := uuid.New()
+	now := time.Now()
+
+	user, err := s.db.CreateUser(ctx, database.CreateUserParams{
+		ID:        id,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      username,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("user created: %+v\n", user)
+
+	if err = s.config.SetUser(username); err != nil {
+		log.Fatal(err)
+	}
+
 	return nil
 }
 
@@ -58,11 +108,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	curState := state{config: &cfg}
+	db, err := sql.Open("postgres", cfg.DBUrl)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbQueries := database.New(db)
+
+	curState := state{config: &cfg, db: dbQueries}
 
 	cmds := commands{handlers: map[string]cmdHandlerFn{}}
 
 	cmds.register("login", handleLogin)
+	cmds.register("register", handleRegister)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
