@@ -44,6 +44,19 @@ func (c *commands) register(name string, f cmdHandlerFn) {
 	c.handlers[name] = f
 }
 
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) cmdHandlerFn {
+	return func(s *state, c command) error {
+		ctx := context.Background()
+
+		user, err := s.db.GetUser(ctx, s.config.UserName)
+		if err != nil {
+			return err
+		}
+
+		return handler(s, c, user)
+	}
+}
+
 func handleLogin(s *state, cmd command) error {
 	if len(cmd.args) != 1 {
 		return errors.New("expected 1 argument: username")
@@ -151,7 +164,7 @@ func handleAgg(s *state, _ command) error {
 	return nil
 }
 
-func handleAddFeed(s *state, c command) error {
+func handleAddFeed(s *state, c command, user database.User) error {
 	if len(c.args) != 2 {
 		return errors.New("expected 2 args: feed-name feed-url")
 	}
@@ -159,11 +172,6 @@ func handleAddFeed(s *state, c command) error {
 	feedUrl := c.args[1]
 
 	ctx := context.Background()
-
-	user, err := s.db.GetUser(ctx, s.config.UserName)
-	if err != nil {
-		return err
-	}
 
 	now := time.Now()
 
@@ -210,7 +218,7 @@ func handleListAllFeeds(s *state, _ command) error {
 	return nil
 }
 
-func handleFollow(s *state, c command) error {
+func handleFollow(s *state, c command, user database.User) error {
 	if len(c.args) != 1 {
 		return errors.New("expected 1 arg: feed-url")
 	}
@@ -221,11 +229,6 @@ func handleFollow(s *state, c command) error {
 	feed, err := s.db.GetFeedByUrl(ctx, feedUrl)
 	if err != nil {
 		return fmt.Errorf("feed not found: %w", err)
-	}
-
-	user, err := s.db.GetUser(ctx, s.config.UserName)
-	if err != nil {
-		return err
 	}
 
 	now := time.Now()
@@ -245,13 +248,8 @@ func handleFollow(s *state, c command) error {
 	return nil
 }
 
-func handleFollowing(s *state, _ command) error {
+func handleFollowing(s *state, _ command, user database.User) error {
 	ctx := context.Background()
-
-	user, err := s.db.GetUser(ctx, s.config.UserName)
-	if err != nil {
-		return err
-	}
 
 	follows, err := s.db.GetFeedFollowsForUser(ctx, user.ID)
 	if err != nil {
@@ -299,10 +297,10 @@ func main() {
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleListUsers)
 	cmds.register("agg", handleAgg)
-	cmds.register("addfeed", handleAddFeed)
+	cmds.register("addfeed", middlewareLoggedIn(handleAddFeed))
 	cmds.register("feeds", handleListAllFeeds)
-	cmds.register("follow", handleFollow)
-	cmds.register("following", handleFollowing)
+	cmds.register("follow", middlewareLoggedIn(handleFollow))
+	cmds.register("following", middlewareLoggedIn(handleFollowing))
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
