@@ -179,6 +179,19 @@ func handleAddFeed(s *state, c command) error {
 		return err
 	}
 
+	now = time.Now()
+
+	_, err = s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("%+v\n", feed)
 	return nil
 }
@@ -194,6 +207,63 @@ func handleListAllFeeds(s *state, _ command) error {
 	for _, feed := range feeds {
 		fmt.Println(" -", feed.FeedName, feed.Url, feed.UserName)
 	}
+	return nil
+}
+
+func handleFollow(s *state, c command) error {
+	if len(c.args) != 1 {
+		return errors.New("expected 1 arg: feed-url")
+	}
+	feedUrl := c.args[0]
+
+	ctx := context.Background()
+
+	feed, err := s.db.GetFeedByUrl(ctx, feedUrl)
+	if err != nil {
+		return fmt.Errorf("feed not found: %w", err)
+	}
+
+	user, err := s.db.GetUser(ctx, s.config.UserName)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	_, err = s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(user.Name, feed.Name)
+	return nil
+}
+
+func handleFollowing(s *state, _ command) error {
+	ctx := context.Background()
+
+	user, err := s.db.GetUser(ctx, s.config.UserName)
+	if err != nil {
+		return err
+	}
+
+	follows, err := s.db.GetFeedFollowsForUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(user.Name, "following:")
+
+	for _, feed := range follows {
+		fmt.Println(" -", feed.Name, feed.Url)
+	}
+
 	return nil
 }
 
@@ -231,6 +301,8 @@ func main() {
 	cmds.register("agg", handleAgg)
 	cmds.register("addfeed", handleAddFeed)
 	cmds.register("feeds", handleListAllFeeds)
+	cmds.register("follow", handleFollow)
+	cmds.register("following", handleFollowing)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
