@@ -10,5 +10,12 @@ VALUES (
 )
 RETURNING *;
 
+-- name: GetAllFeeds :many
+SELECT
+    feeds.name as feed_name,
+    feeds.url as url,
+    users.name as user_name
+FROM feeds JOIN users on users.id = feeds.user_id;
+
 -- name: ResetFeeds :exec
 TRUNCATE TABLE feeds CASCADE;

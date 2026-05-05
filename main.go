@@ -183,6 +183,20 @@ func handleAddFeed(s *state, c command) error {
 	return nil
 }
 
+func handleListAllFeeds(s *state, _ command) error {
+	ctx := context.Background()
+
+	feeds, err := s.db.GetAllFeeds(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, feed := range feeds {
+		fmt.Println(" -", feed.FeedName, feed.Url, feed.UserName)
+	}
+	return nil
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -216,6 +230,7 @@ func main() {
 	cmds.register("users", handleListUsers)
 	cmds.register("agg", handleAgg)
 	cmds.register("addfeed", handleAddFeed)
+	cmds.register("feeds", handleListAllFeeds)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
