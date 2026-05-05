@@ -100,6 +100,10 @@ func handleRegister(s *state, cmd command) error {
 
 func handleReset(s *state, _ command) error {
 	ctx := context.Background()
+	err := s.db.ResetFeeds(ctx)
+	if err != nil {
+		return err
+	}
 	return s.db.Reset(ctx)
 }
 
@@ -147,6 +151,38 @@ func handleAgg(s *state, _ command) error {
 	return nil
 }
 
+func handleAddFeed(s *state, c command) error {
+	if len(c.args) != 2 {
+		return errors.New("expected 2 args: feed-name feed-url")
+	}
+	feedName := c.args[0]
+	feedUrl := c.args[1]
+
+	ctx := context.Background()
+
+	user, err := s.db.GetUser(ctx, s.config.UserName)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	feed, err := s.db.CreateFeed(ctx, database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		Name:      feedName,
+		Url:       feedUrl,
+		UserID:    user.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v\n", feed)
+	return nil
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -179,6 +215,7 @@ func main() {
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleListUsers)
 	cmds.register("agg", handleAgg)
+	cmds.register("addfeed", handleAddFeed)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
