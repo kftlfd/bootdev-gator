@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"gator/internal/config"
 	"gator/internal/database"
+	"gator/internal/rss"
 	"log"
 	"os"
 	"time"
@@ -121,6 +122,31 @@ func handleListUsers(s *state, _ command) error {
 	return nil
 }
 
+func handleAgg(s *state, _ command) error {
+	url := "https://www.wagslane.dev/index.xml"
+
+	ctx := context.Background()
+
+	feed, err := rss.FetchFeed(ctx, url)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(feed.Channel.Title)
+	fmt.Println(feed.Channel.Link)
+	fmt.Println(feed.Channel.Description)
+
+	for i, item := range feed.Channel.Item {
+		fmt.Printf(
+			"\n%d. %s\n%s\n%s\n",
+			i+1, item.Title, item.Link, item.Description,
+		)
+	}
+
+	fmt.Printf("%+v\n", *feed)
+	return nil
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -139,14 +165,20 @@ func main() {
 
 	dbQueries := database.New(db)
 
-	curState := state{config: &cfg, db: dbQueries}
+	curState := state{
+		config: &cfg,
+		db:     dbQueries,
+	}
 
-	cmds := commands{handlers: map[string]cmdHandlerFn{}}
+	cmds := commands{
+		handlers: map[string]cmdHandlerFn{},
+	}
 
 	cmds.register("login", handleLogin)
 	cmds.register("register", handleRegister)
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleListUsers)
+	cmds.register("agg", handleAgg)
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
