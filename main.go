@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	"github.com/pressly/goose/v3"
 )
 
 type state struct {
@@ -44,6 +46,25 @@ func (c *commands) run(s *state, cmd command) error {
 
 func (c *commands) register(name string, f cmdHandlerFn) {
 	c.handlers[name] = f
+}
+
+//go:embed sql/schema/*.sql
+var embedMigrations embed.FS
+
+func runDBMigrations(db *sql.DB) cmdHandlerFn {
+	return func(_ *state, _ command) error {
+		goose.SetBaseFS(embedMigrations)
+
+		if err := goose.SetDialect("postgres"); err != nil {
+			return err
+		}
+
+		if err := goose.Up(db, "sql/schema"); err != nil {
+			return err
+		}
+
+		return nil
+	}
 }
 
 func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) cmdHandlerFn {
@@ -449,6 +470,8 @@ func main() {
 	cmds := commands{
 		handlers: map[string]cmdHandlerFn{},
 	}
+
+	cmds.register("dbmigrate", runDBMigrations(db))
 
 	cmds.register("reset", handleReset)
 	cmds.register("agg", handleAgg)
