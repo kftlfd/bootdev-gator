@@ -11,6 +11,7 @@ import (
 	"gator/internal/rss"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -390,6 +391,38 @@ func handleUnfollow(s *state, c command, user database.User) error {
 	return err
 }
 
+func handleBrowse(s *state, c command, user database.User) error {
+	var limit int32 = 2
+
+	if len(c.args) > 1 {
+		return errors.New("expected 1 arg or less: [limit]")
+	}
+
+	if len(c.args) == 1 {
+		i, err := strconv.ParseInt(c.args[0], 10, 32)
+		if err != nil {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+		limit = int32(i)
+	}
+
+	ctx := context.Background()
+
+	posts, err := s.db.GetPostsForUser(ctx, database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  limit,
+	})
+	if err != nil {
+		return err
+	}
+
+	for i, post := range posts {
+		fmt.Printf("\n%d: %s\n", i+1, prettyPrint(post))
+	}
+
+	return nil
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -430,6 +463,7 @@ func main() {
 	cmds.register("follow", middlewareLoggedIn(handleFollow))
 	cmds.register("following", middlewareLoggedIn(handleFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handleUnfollow))
+	cmds.register("browse", middlewareLoggedIn(handleBrowse))
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
