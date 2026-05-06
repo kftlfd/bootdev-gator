@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"gator/internal/config"
@@ -160,8 +161,7 @@ func scrapeFeeds(s *state) error {
 		return fmt.Errorf("Failed to fetch feed: %w", err)
 	}
 
-	printFeed(feed)
-	return nil
+	return saveFeedPostsToDB(feedRow.ID, feed, s.db)
 }
 
 func printFeed(feed *rss.RSSFeed) {
@@ -175,6 +175,76 @@ func printFeed(feed *rss.RSSFeed) {
 		// fmt.Printf("\n%s", item.Description)
 		fmt.Printf("\n")
 	}
+}
+
+func parsePostPubTime(pubTime string) sql.NullTime {
+	if pt, err := time.Parse(time.RFC1123Z, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	if pt, err := time.Parse(time.RFC1123, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	if pt, err := time.Parse(time.RFC3339, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	if pt, err := time.Parse(time.RubyDate, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	if pt, err := time.Parse(time.UnixDate, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	if pt, err := time.Parse(time.ANSIC, pubTime); err == nil {
+		return sql.NullTime{Valid: true, Time: pt}
+	}
+
+	return sql.NullTime{}
+}
+
+func prettyPrint(i any) string {
+	s, _ := json.MarshalIndent(i, "", "\t")
+	return string(s)
+}
+
+func saveFeedPostsToDB(feedId uuid.UUID, feed *rss.RSSFeed, db *database.Queries) error {
+	ctx := context.Background()
+	now := time.Now()
+	hasErrors := false
+
+	for _, post := range feed.Channel.Item {
+		fmt.Println()
+		pubtime := parsePostPubTime(post.PubDate)
+		fmt.Printf("%+v <- %s\n", pubtime, post.PubDate)
+
+		params := database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   now,
+			UpdatedAt:   now,
+			Title:       post.Title,
+			Url:         post.Link,
+			Description: sql.NullString{Valid: true, String: post.Description},
+			PublishedAt: pubtime,
+			FeedID:      feedId,
+		}
+
+		fmt.Printf("%s\n", prettyPrint(params))
+
+		err := db.CreatePost(ctx, params)
+
+		if err != nil {
+			fmt.Printf("save to DB error: %s\n", err.Error())
+			hasErrors = true
+		}
+	}
+
+	if hasErrors {
+		return errors.New("save to DB: has errors")
+	}
+	return nil
 }
 
 func handleAgg(s *state, c command) error {
