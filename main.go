@@ -113,11 +113,7 @@ func handleRegister(s *state, cmd command) error {
 
 func handleReset(s *state, _ command) error {
 	ctx := context.Background()
-	err := s.db.ResetFeeds(ctx)
-	if err != nil {
-		return err
-	}
-	return s.db.Reset(ctx)
+	return s.db.ResetDB(ctx)
 }
 
 func handleListUsers(s *state, _ command) error {

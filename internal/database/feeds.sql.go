@@ -14,14 +14,7 @@ import (
 
 const createFeed = `-- name: CreateFeed :one
 INSERT INTO feeds (id, created_at, updated_at, name, url, user_id)
-VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6
-)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, created_at, updated_at, name, url, user_id
 `
 
@@ -59,15 +52,11 @@ const createFeedFollow = `-- name: CreateFeedFollow :one
 WITH follow as (
     INSERT INTO feed_follows (id, created_at, updated_at, user_id, feed_id)
     VALUES ($1, $2, $3, $4, $5)
-    RETURNING id, created_at, updated_at, user_id, feed_id
-)
-
-SELECT
-    follow.id, follow.created_at, follow.updated_at, follow.user_id, follow.feed_id,
+    RETURNING id, created_at, updated_at, user_id, feed_id)
+SELECT follow.id, follow.created_at, follow.updated_at, follow.user_id, follow.feed_id,
     users.name as user_name,
     feeds.name as feed_name
-FROM
-    follow
+FROM follow
     INNER JOIN users on follow.user_id = users.id
     INNER JOIN feeds on follow.feed_id = feeds.id
 `
@@ -131,7 +120,9 @@ SELECT
     feeds.name as feed_name,
     feeds.url as url,
     users.name as user_name
-FROM feeds JOIN users on users.id = feeds.user_id
+FROM
+    feeds
+    INNER JOIN users on users.id = feeds.user_id
 `
 
 type GetAllFeedsRow struct {
@@ -215,13 +206,4 @@ func (q *Queries) GetFeedFollowsForUser(ctx context.Context, userID uuid.UUID) (
 		return nil, err
 	}
 	return items, nil
-}
-
-const resetFeeds = `-- name: ResetFeeds :exec
-TRUNCATE TABLE feeds CASCADE
-`
-
-func (q *Queries) ResetFeeds(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, resetFeeds)
-	return err
 }
