@@ -50,7 +50,7 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
 
 		user, err := s.db.GetUser(ctx, s.config.UserName)
 		if err != nil {
-			return err
+			return fmt.Errorf("User not found: %w", err)
 		}
 
 		return handler(s, c, user)
@@ -135,29 +135,68 @@ func handleListUsers(s *state, _ command) error {
 	return nil
 }
 
-func handleAgg(s *state, _ command) error {
-	url := "https://www.wagslane.dev/index.xml"
+func scrapeFeeds(s *state) error {
+	fmt.Println("Getting next feed ...")
 
 	ctx := context.Background()
 
-	feed, err := rss.FetchFeed(ctx, url)
+	feedRow, err := s.db.GetNextFeedToFetch(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("Can't get next feed to fetch: %w", err)
 	}
 
+	fmt.Printf("%+v\n", feedRow)
+
+	_, err = s.db.MarkFeedFetched(ctx, database.MarkFeedFetchedParams{
+		ID:            feedRow.ID,
+		LastFetchedAt: sql.NullTime{Valid: true, Time: time.Now()},
+	})
+	if err != nil {
+		return fmt.Errorf("Error marking feed as fetched: %w", err)
+	}
+
+	feed, err := rss.FetchFeed(ctx, feedRow.Url)
+	if err != nil {
+		return fmt.Errorf("Failed to fetch feed: %w", err)
+	}
+
+	printFeed(feed)
+	return nil
+}
+
+func printFeed(feed *rss.RSSFeed) {
 	fmt.Println(feed.Channel.Title)
 	fmt.Println(feed.Channel.Link)
 	fmt.Println(feed.Channel.Description)
 
-	for i, item := range feed.Channel.Item {
-		fmt.Printf(
-			"\n%d. %s\n%s\n%s\n",
-			i+1, item.Title, item.Link, item.Description,
-		)
+	for i, item := range feed.Channel.Item[:5] {
+		fmt.Printf("%d. %s", i+1, item.Title)
+		// fmt.Printf("\n%s", item.Link)
+		// fmt.Printf("\n%s", item.Description)
+		fmt.Printf("\n")
+	}
+}
+
+func handleAgg(s *state, c command) error {
+	if len(c.args) != 1 {
+		return errors.New("extected 1 arg: time-between-reqs")
 	}
 
-	fmt.Printf("%+v\n", *feed)
-	return nil
+	d, err := time.ParseDuration(c.args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every %s\n", d)
+
+	ticker := time.NewTicker(d)
+
+	for ; ; <-ticker.C {
+		err = scrapeFeeds(s)
+		if err != nil {
+			fmt.Printf("scrape error: %s\n", err.Error())
+		}
+	}
 }
 
 func handleAddFeed(s *state, c command, user database.User) error {
@@ -308,13 +347,16 @@ func main() {
 		handlers: map[string]cmdHandlerFn{},
 	}
 
+	cmds.register("reset", handleReset)
+	cmds.register("agg", handleAgg)
+
 	cmds.register("login", handleLogin)
 	cmds.register("register", handleRegister)
-	cmds.register("reset", handleReset)
+
 	cmds.register("users", handleListUsers)
-	cmds.register("agg", handleAgg)
-	cmds.register("addfeed", middlewareLoggedIn(handleAddFeed))
 	cmds.register("feeds", handleListAllFeeds)
+
+	cmds.register("addfeed", middlewareLoggedIn(handleAddFeed))
 	cmds.register("follow", middlewareLoggedIn(handleFollow))
 	cmds.register("following", middlewareLoggedIn(handleFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handleUnfollow))
