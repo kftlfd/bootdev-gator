@@ -444,6 +444,37 @@ func handleBrowse(s *state, c command, user database.User) error {
 	return nil
 }
 
+type MsgDef struct {
+	name  string
+	args  string
+	descr string
+}
+
+func printHelpInfo(msgs []MsgDef, leftpad int) {
+	if leftpad < 0 {
+		leftpad = 0
+	}
+	if leftpad > 10 {
+		leftpad = 10
+	}
+
+	maxNameLen := 0
+	maxArgsLen := 0
+
+	for _, msg := range msgs {
+		if len(msg.name) > maxNameLen {
+			maxNameLen = len(msg.name)
+		}
+		if len(msg.args) > maxArgsLen {
+			maxArgsLen = len(msg.args)
+		}
+	}
+
+	for _, msg := range msgs {
+		fmt.Printf("%*s%*s %*s – %s\n", leftpad, "", maxNameLen, msg.name, -maxArgsLen, msg.args, msg.descr)
+	}
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
@@ -487,6 +518,37 @@ func main() {
 	cmds.register("following", middlewareLoggedIn(handleFollowing))
 	cmds.register("unfollow", middlewareLoggedIn(handleUnfollow))
 	cmds.register("browse", middlewareLoggedIn(handleBrowse))
+
+	cmds.register("help", func(s *state, c command) error {
+		fmt.Println("gator v0.1.0")
+
+		fmt.Println()
+		fmt.Println(" --- general ---")
+		general := []MsgDef{
+			{"help", "", "print this message"},
+			{"dbmigrate", "", "run DB migrations (prepare DB for use)"},
+			{"reset", "", "remove all data from the DB"},
+			{"agg", "<interval>", "run aggregator loop (fetch feeds, save posts to DB)"},
+			{"users", "", "list all users"},
+			{"register", "<username>", "add new user (and login as it)"},
+			{"login", "<username>", "change current user"},
+		}
+		printHelpInfo(general, 4)
+
+		fmt.Println()
+		fmt.Println(" --- when logged in ---")
+		authed := []MsgDef{
+			{"addfeed", "<feed-name> <feed-url>", "add new feed"},
+			{"follow", "<feed-url>", "set the current user to follow the feed"},
+			{"following", "", "list the feeds the current user follows"},
+			{"unfollow", "<feed-url>", "unfollow the feed"},
+			{"browse", "[limit]", "show latest posts in following feeds"},
+		}
+		printHelpInfo(authed, 4)
+
+		fmt.Println()
+		return nil
+	})
 
 	err = cmds.run(&curState, command{name: args[1], args: args[2:]})
 	if err != nil {
