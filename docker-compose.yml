@@ -4,11 +4,11 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=gator
 
 volumes:
-  db_data:
+  db-data:
